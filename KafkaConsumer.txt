@@ -1,0 +1,137 @@
+package nl.rug.sc.app
+
+import nl.rugds.app.HistoricalItemMain.sparkSession
+import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.kafka.common.serialization.IntegerDeserializer
+import org.apache.spark.SparkConf
+import org.apache.spark.ml.recommendation.ALSModel
+import org.apache.spark.sql.{SQLContext, SparkSession}
+import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.apache.spark.sql.Encoders
+import org.apache.spark.mllib.recommendation.ALS
+import org.apache.spark.mllib.recommendation.MatrixFactorizationModel
+import org.apache.spark.mllib.recommendation.Rating
+
+import nl.rugds.app.HistoricalItemMain.sparkSession
+import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.kafka.common.serialization.IntegerDeserializer
+import org.apache.spark.SparkConf
+import org.apache.spark.ml.recommendation.ALSModel
+import org.apache.spark.sql.{SQLContext, SparkSession}
+import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.apache.spark.sql.SparkSession
+//import com.mongodb.spark.
+import com.mongodb.spark.MongoSpark
+import com.mongodb.spark.config.{ReadConfig, WriteConfig}
+import nl.rugds.app.HistoricalMain.{IndexSongMetaData, predictions, sparkSession}
+import nl.rugds.app.old.MongoSparkMain.sparkSession
+import org.apache.spark.sql.SparkSession
+//import org.apache.spark.sql.types.
+import org.apache.spark.sql.Encoders
+import org.apache.spark.sql.functions._
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+//import org.apache.spark.mllib.linalg.
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.ml.evaluation.RegressionEvaluator
+import org.apache.spark.ml.recommendation.ALS
+import org.apache.spark.ml.feature.StringIndexer
+import com.mongodb.spark.sql.DefaultSource
+
+import scala.io.Codec
+import scala.math.sqrt
+import org.apache.log4j._
+import org.apache.spark.sql.catalyst.plans.JoinType
+import org.spark_project.jetty.security.PropertyUserStore.UserListener
+
+object KafkaMain extends App
+{
+  case class SongData1(newuserid: Double, newsongid: Double, listen_count: Double, tid: Int)
+
+  val sparkSession = SparkSession // Usually you only create one Spark Session in your application, but for demo purpose we recreate them
+    .builder()
+    .appName("NetworkWordCount")
+    .master("local[*]")
+    .getOrCreate()
+
+  val ssc = new StreamingContext(sparkSession.sparkContext, Seconds(60))
+  val kafkaParams = Map[String, Object](
+    "bootstrap.servers" -> "localhost:9092",
+    "key.deserializer" -> classOf[StringDeserializer],
+    "value.deserializer" -> classOf[StringDeserializer],
+    "group.id" -> "group2",
+    "auto.offset.reset" -> "latest",
+    "enable.auto.commit" -> (false: java.lang.Boolean)
+  )
+
+  val sc =  ssc.sparkContext
+  val topics = Array("new-topic")
+  val stream = KafkaUtils.createDirectStream[String, String](
+    ssc,
+    LocationStrategies.PreferConsistent,
+    ConsumerStrategies.Subscribe[String, String](topics, kafkaParams)
+  )
+  //val dstream = stream.window(Seconds(200),Seconds(100))
+
+  //val dstream = stream.window(Seconds(200))
+
+
+//dstream.
+ // dstream.foreachRDD(rdd=> rdd.foreach(println))
+
+
+stream.map(record => (record.key, record.value)).foreachRDD{rdd => rdd.foreach
+  {
+
+
+//    stream.foreachRDD { rdd =>
+//      rdd.foreach { record =>
+//        val value = record.value()
+//        println(map.get(value))
+//      }
+//    }
+    case(k, v) => println(k,v)
+
+      val value = v.split(",")
+      val value1 = value(0).toDouble
+      val value2 = value(1).toDouble
+      val value3 = value(2).toDouble
+      val value4 = value(3).toInt
+
+      val SongData = SongData1(value1,value2,value3,value4) // passing the values to case class songdata1
+
+
+
+      val RddSongData = sc.parallelize(Array(SongData)) // rdd
+
+      val dfSongData = sparkSession.createDataFrame(RddSongData) // dataframe
+      println("printing our DATAFRAME")
+      dfSongData.show()
+
+    
+      val writeConfig = WriteConfig(Map("uri" -> "mongodb://127.0.0.1/", "database" -> "MyHist", "collection" -> "RECEIVEROWS"))
+
+      MongoSpark.save(dfSongData, writeConfig)
+     
+      val MongoMDF = MongoSpark.load(sparkSession, ReadConfig(Map("uri" -> "mongodb://127.0.0.1/Myhist.RECEIVEROWS")))
+    
+
+
+//      val popsongs = MongoMDF.groupBy("newsongid").agg(count("newuserid").as("usercount"),sum("listen_count").as("popularsong"))
+//      popsongs.show()
+//      println("count of popsongs " + popsongs.count())
+
+
+
+
+  }
+
+  }
+
+  ssc.start()
+
+  stream.start()
+
+  ssc.awaitTermination()
+}

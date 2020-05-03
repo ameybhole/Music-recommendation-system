@@ -1,0 +1,82 @@
+package nl.rugds.app.old
+import java.util.{Date, Properties}
+import java.util.{Date, Properties}
+import com.mongodb.spark._
+import com.mongodb.spark.MongoSpark
+import com.mongodb.spark.config.{ReadConfig, WriteConfig}
+import nl.rugds.app.HistoricalMain.{IndexSongData, IndexSongMetaData, SongData, SongMetaData, sparkSession, _}
+import nl.rugds.app.old.MongoSparkMain.sparkSession
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.Encoders
+import org.apache.spark.sql.functions._
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.mllib.linalg._
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.ml.evaluation.RegressionEvaluator
+import org.apache.spark.ml.recommendation.ALS
+import org.apache.spark.ml.feature.StringIndexer
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
+import scala.io.Codec
+import scala.math.sqrt
+import org.apache.log4j._
+import org.spark_project.jetty.security.PropertyUserStore.UserListener
+import com.mongodb.spark._
+import com.mongodb.spark.MongoSpark
+import com.mongodb.spark.config.{ReadConfig, WriteConfig}
+import com.mongodb.spark.config.ReadConfig
+import nl.rugds.app.HistoricalItemMain.{IndexSongData, sc, schema1}
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
+import org.apache.spark.sql.Encoders
+import scala.util.Random
+
+
+object ProducerMain extends App
+{
+  case class StringSongData(tid: String, user_id: String, song_id: String, listen_count: String, newuserid: String, newsongid: String)
+
+  val topic = "new-topic"
+  val brokers = "localhost:9092"
+  val rnd = new Random()
+  val props = new Properties()
+
+  props.put("bootstrap.servers", brokers)
+  props.put("client.id", "ScalaProducerExample")
+  props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+  props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+//  props.put("batch.size", "16384")
+//  props.put("auto.commit.interval.ms", "1000000")
+//  props.put("linger.ms", "10000000")
+
+  val sparkSession = SparkSession.builder()
+    .appName("Addition")
+    .master("local[*]")
+    .config("spark.mongodb.input.uri", "mongodb://127.0.0.1/MyHist.Dataset")
+    .config("spark.mongodb.output.uri", "mongodb://127.0.0.1/mydb.results")
+    .getOrCreate()
+
+  import sparkSession.implicits._
+  val sc = sparkSession.sparkContext
+  val mongoDF = MongoSpark.load(sparkSession) //loading data from mongo
+  val mongoDS = mongoDF.as[StringSongData] //convert to DS based on case class StringSongData
+
+
+  val MappedDS = mongoDS.map(x => (x.newuserid, x.newsongid, x.listen_count, x.tid)) // map dataset to get the aforementioned values seperately (Dataset(String,string,string,string) in each row
+
+
+  val producer = new KafkaProducer[String, String](props)
+  val t = System.currentTimeMillis()
+
+  MappedDS.foreach{ row =>
+    val SongArray = Array(row._1,row._2,row._3,row._4)
+    val SingleStringSong = SongArray.mkString(",") // get values from array seperate them with "," and save them as single string
+
+
+  val data = new ProducerRecord[String, String](topic, "RANDOMKEY", SingleStringSong)
+    val result = producer.send(data)
+
+  }
+
+  producer.close()
+
+}
